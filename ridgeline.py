@@ -652,7 +652,10 @@ def send_email(subject, html_body):
         msg["From"]    = EMAIL_FROM
         msg["To"]      = EMAIL_TO
         msg.attach(MIMEText(html_body, "html"))
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as s:
+        with smtplib.SMTP("smtp.gmail.com", 587) as s:
+            s.ehlo()
+            s.starttls()
+            s.ehlo()
             s.login(EMAIL_FROM, EMAIL_PASSWORD)
             s.sendmail(EMAIL_FROM, EMAIL_TO, msg.as_string())
         log.info(f"📧 Email sent: {subject}")
