@@ -1125,6 +1125,27 @@ def main():
     log.info("║  ✅ Three Time Horizon Framework                      ║")
     log.info("╚══════════════════════════════════════════════════════╝\n")
 
+    # ── Startup Email Test ───────────────────────────────────────
+    log.info("📧 Testing email configuration on startup...")
+    if all([EMAIL_FROM, EMAIL_TO, EMAIL_PASSWORD]):
+        try:
+            account    = get_account()
+            positions  = get_positions()
+            intel      = get_full_intelligence(positions)
+            fear_greed = get_fear_greed()
+            benchmark  = get_benchmark()
+            html = build_morning_brief(account, positions, intel, fear_greed, benchmark)
+            send_email(
+                f"🌄 Ridgeline Morning Brief — {datetime.now(timezone.utc).strftime('%b %d')} — EMAIL TEST",
+                html
+            )
+            daily_summary["morning_brief_sent"] = True
+            log.info("✅ Startup email sent successfully!")
+        except Exception as e:
+            log.error(f"Startup email failed: {e}")
+    else:
+        log.warning("⚠️ Email not configured — check EMAIL_FROM, EMAIL_TO, EMAIL_PASSWORD")
+
     cycle = 1
     while True:
         try:
