@@ -55,14 +55,33 @@ daily_summary = {
 # ── Macro Theme Watchlists ────────────────────────────────────────
 MACRO_THEMES = {
     "ai_ipo":        ["NVDA", "MSFT", "GOOGL", "AMD", "META"],
-    "gold_silver":   ["GLD", "SLV", "GDXJ", "GDX", "AG", "PAAS"],
+    "gold_silver":   ["GLD", "SLV", "GDXJ", "AG", "PAAS"],
     "nuclear":       ["SMR", "OKLO", "LEU", "URG", "VST", "CCJ", "CEG", "NLR"],
     "defense":       ["KTOS", "AVAV", "RKLB", "PLTR", "AXON", "TDG", "HWM", "LMT", "RTX", "NOC"],
-    "energy":        ["XOM", "CVX", "OXY", "DVN", "COP", "LNG"],
+    "energy":        ["XOM", "OXY", "DVN", "COP", "LNG"],
     "inflation_hedge": ["GLD", "SLV", "BRK-B", "VPU", "XLE"],
     "short_plays":   ["SQQQ", "SH", "PSQ", "DOG"],
-    "recession_safe": ["JNJ", "PG", "KO", "WMT", "VZ", "T"]
+    "recession_safe": ["JNJ", "PG", "KO", "WMT", "VZ", "T"],
+    "satellite_moonshots": [
+        "URG", "UUUU", "NNE", "RCAT", "LUNR",
+        "IMSR", "SMR", "OKLO", "KTOS", "AVAV"
+    ]
 }
+
+# ── Portfolio Allocation Targets ─────────────────────────────────
+ALLOCATION_TARGETS = {
+    "core_macro":   0.75,
+    "satellite":    0.12,
+    "cash_reserve": 0.10,
+    "hedge":        0.03,
+}
+
+# ── Position Sizing Rules ────────────────────────────────────────
+MAX_SINGLE_POSITION_PCT  = 0.20
+MAX_SECTOR_PCT           = 0.20
+MIN_POSITION_VALUE       = 500
+SATELLITE_MAX_SINGLE_PCT = 0.03
+SATELLITE_TOTAL_PCT      = 0.12
 
 # ═══════════════════════════════════════════════════════════════
 # ALPACA HELPERS
@@ -399,14 +418,18 @@ def check_black_swan(positions, portfolio_value):
             warnings.append(f"BLACK SWAN: {p['symbol']} down {abs(pl_pct):.1f}%")
     return warnings
 
-def get_position_size(conviction, cash, price, geopolitical_risk):
+def get_position_size(conviction, cash, price, geopolitical_risk, is_satellite=False):
     """Size positions by conviction level and risk environment"""
-    base_pct = {
-        "high":   0.25,
-        "medium": 0.15,
-        "low":    0.07,
-        "speculative": 0.04
-    }.get(conviction, 0.10)
+    if is_satellite:
+        # Satellite plays: max 3% of portfolio (~$3000 on $100k)
+        base_pct = 0.03
+    else:
+        base_pct = {
+            "high":        0.25,
+            "medium":      0.15,
+            "low":         0.07,
+            "speculative": 0.04
+        }.get(conviction, 0.10)
 
     # Reduce size in high geopolitical risk
     risk_multiplier = max(0.5, 1.0 - (geopolitical_risk - 5) * 0.08)
@@ -592,6 +615,24 @@ RULES:
   short squeeze setups, contrarian plays when sentiment is extreme
 - Quick win opportunities: momentum, news catalyst, technical breakout
 - Long game positioning: macro themes, inflation hedges, war economy plays
+
+PORTFOLIO CONSTRUCTION RULES (enforce strictly):
+- MAX single position: 20% of portfolio — if GDXJ or any position exceeds this, TRIM it
+- MAX sector exposure: 20% — gold miners total (GLD+GDX+GDXJ) should not exceed 20%
+- NO redundant correlated positions: hold EITHER GDX OR GDXJ, not both
+- NO duplicate nuclear plays: hold EITHER OKLO OR SMR, not both simultaneously
+- MIN position value: $500 — exit any position worth less than $500, too small to matter
+- CVX is BEARISH — oil heading lower, avoid or exit CVX positions
+- RKLB is a STAR — best performer, consider adding on dips
+
+SATELLITE PORTFOLIO RULES (12% of portfolio for moonshots):
+- Allocate up to 12% total to high-risk/high-reward small caps
+- Max 3% per individual satellite position
+- Target stocks under $15/share with binary catalysts
+- Look for: high short interest, thin float, upcoming contract/earnings/regulatory news
+- Satellite candidates from watchlist: URG, UUUU, NNE, RCAT, LUNR, IMSR
+- These are moonshot bets — sized small deliberately, never chase losses
+- When a satellite position doubles, take half off the table immediately
 
 POSITION SIZING: For each action, specify conviction level.
 The system will calculate final share count based on conviction + risk environment.
@@ -1053,18 +1094,21 @@ def run_cycle(cycle_num):
             if not is_liquid_enough(symbol):
                 log.warning(f"⛔ SKIP {symbol} — insufficient liquidity")
                 continue
+            # Detect if this is a satellite play
+            is_satellite = symbol in MACRO_THEMES.get("satellite_moonshots", []) or action.get("time_horizon") == "satellite"
             # Size by conviction
-            shares = get_position_size(conviction, cash, price, geopolitical_score)
+            shares = get_position_size(conviction, cash, price, geopolitical_score, is_satellite)
             if shares <= 0:
                 log.warning(f"⛔ SKIP BUY {symbol} — insufficient cash for {conviction} conviction")
                 continue
             cost = shares * price
-            log.info(f"🟢 BUY {shares}x {symbol} @ ~${price:.2f} [{conviction} conviction, {horizon} horizon] | {reason}")
+            satellite_tag = " [🛸 SATELLITE]" if is_satellite else ""
+            log.info(f"🟢 BUY {shares}x {symbol} @ ~${price:.2f} [{conviction} conviction, {horizon} horizon]{satellite_tag} | {reason}")
             result = place_order(symbol, shares, "buy")
             if result:
                 cash -= cost
                 trailing_stops[symbol] = price
-                daily_summary["trades"].append(f"BUY {shares}x {symbol} @ ${price:.2f} [{conviction}] — {reason}")
+                daily_summary["trades"].append(f"BUY {shares}x {symbol} @ ${price:.2f} [{conviction}]{satellite_tag} — {reason}")
                 cycle_actions.append(action)
 
         elif atype == "SELL":
