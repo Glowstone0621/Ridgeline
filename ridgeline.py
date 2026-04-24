@@ -1179,6 +1179,16 @@ def run_cycle(cycle_num):
         if not symbol or price <= 0:
             continue
 
+        # Defensive: ensure numeric values are valid
+        try:
+            price = float(price) if price is not None else 0
+            if price <= 0:
+                log.warning(f"⛔ SKIP {symbol} — invalid price")
+                continue
+        except (ValueError, TypeError):
+            log.warning(f"⛔ SKIP {symbol} — price conversion error")
+            continue
+
         # Opening hour restraint
         if time_ctx.get("opening_hour") and conviction != "high" and atype in ("BUY","ADD"):
             log.info(f"⏸️ OPENING HOUR SKIP: {atype} {symbol} — only high conviction allowed first 30 min")
